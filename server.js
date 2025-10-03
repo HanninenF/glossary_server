@@ -240,7 +240,7 @@ const port = Number(process.env.PORT || 3000);
 /*
 endpoints:
 # Hämta allt (paginering default: page=1, limit=100)
-http://localhost:3000/api/glossar
+http://localhost:3000/api/glossary
 
 # Filtrera
 http://localhost:3000/api/glossary?domain=Node&kind=Template-motor
