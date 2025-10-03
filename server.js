@@ -1,9 +1,11 @@
 import "dotenv/config";
 import express from "express";
 import mysql from "mysql2/promise";
+import cors from "cors";
 
 const app = express();
 app.use(express.json());
+app.use(cors({ origin: "http://localhost:4200" }));
 
 // Connection pool
 const pool = mysql.createPool({
@@ -122,6 +124,19 @@ app.get("/api/glossary", async (req, res) => {
     if (q) {
       filters.push(`g.term LIKE :q`);
       params.q = `%${String(q)}%`;
+    }
+
+    if (req.query.course) {
+      filters.push(`
+    EXISTS (
+      SELECT 1
+      FROM glossary_course gc
+      JOIN course c ON c.id = gc.course_id
+      WHERE gc.glossary_id = g.id
+        AND c.title = :course
+    )
+  `);
+      params.course = String(req.query.course);
     }
 
     // Bygg inre lista på id:n (stabil sortering på term)
@@ -251,3 +266,8 @@ http://localhost:3000/api/glossary?q=handle
 # En enda term (exakt)
 http://localhost:3000/api/glossary/Handlebars
 */
+
+// http://localhost:3000/api/glossary?course=Backend%20programming%20in%20Node.js
+
+// i frontend gå till
+// http://localhost:4200/?course=Backend%20programming%20in%20Node.js
