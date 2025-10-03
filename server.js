@@ -5,7 +5,14 @@ import cors from "cors";
 
 const app = express();
 app.use(express.json());
-app.use(cors({ origin: "http://localhost:4200" }));
+app.use(
+  cors({
+    origin: [
+      "http://localhost:4200",
+      "https://<DIN-FRONTEND>-vercel.app", // uppdatera när du vet den
+    ],
+  })
+);
 
 // Connection pool
 const pool = mysql.createPool({
