@@ -276,6 +276,15 @@ const port = Number(process.env.PORT || 3000);
     console.error("DB check failed at startup:", err);
   }
 
+  // POST /api/glossary
+  app.post("/api/glossary", (req, res) => {
+    console.log("Mottog POST-data:", req.body);
+    res.status(201).json({
+      message: "POST mottagen!",
+      data: req.body,
+    });
+  });
+
   app.listen(port, () =>
     console.log(`API listening on http://localhost:${port}`)
   );
