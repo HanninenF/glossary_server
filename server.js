@@ -5,7 +5,7 @@ import cors from "cors";
 import morgan from "morgan";
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: "1mb" }));
 app.use(
   cors({
     origin: [
@@ -71,6 +71,11 @@ function mapGlossaryRow(x) {
   return {
     term: x?.term ?? null,
     definition: x?.definition ?? null,
+    bulletPoints: Array.isArray(x?.bulletPoints)
+      ? x.bulletPoints
+      : x?.bulletPoints
+      ? JSON.parse(x.bulletPoints)
+      : [],
     domain: x?.domain ?? null,
     kind: x?.kind ?? null,
     courses: Array.isArray(x?.courses)
@@ -95,6 +100,7 @@ const BASE_SQL = `
            JSON_OBJECT(
              'term', g.term,
              'definition', g.definition,
+             'bulletPoints', g.bulletPoints,
              'domain', dd.name,
              'kind', dk.name,
              'courses', (
@@ -260,6 +266,10 @@ app.post("/api/glossary", async (req, res) => {
       ? null
       : String(req.body.definition).trim();
 
+  const bulletPoints = Array.isArray(req.body?.bulletPoints)
+    ? JSON.stringify(req.body.bulletPoints.filter((x) => typeof x === "string"))
+    : null;
+
   if (!term || term.length > 255)
     return res
       .status(400)
@@ -268,8 +278,8 @@ app.post("/api/glossary", async (req, res) => {
   const conn = await pool.getConnection();
   try {
     const [result] = await conn.execute(
-      "INSERT INTO glossary (term, definition) VALUES (?, ?)",
-      [term, definition] // definition kan vara null
+      "INSERT INTO glossary (term, definition, bulletPoints) VALUES (?, ?, ?)",
+      [term, definition, bulletPoints]
     );
     // @ts-ignore
     const id = result?.insertId ?? null;
@@ -282,7 +292,13 @@ app.post("/api/glossary", async (req, res) => {
     res
       .status(201)
       .set("Location", `/api/glossary/${encodeURIComponent(term)}`)
-      .json(raw[0] ?? { term, definition });
+      .json(
+        raw[0] ?? {
+          term,
+          definition,
+          bulletPoints: bulletPoints ? JSON.parse(bulletPoints) : [],
+        }
+      );
   } catch (err) {
     if (err?.code === "ER_DUP_ENTRY") {
       return res.status(409).json({ error: "term finns redan" });
