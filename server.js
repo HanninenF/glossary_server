@@ -2,6 +2,7 @@ import "dotenv/config";
 import express from "express";
 import mysql from "mysql2/promise";
 import cors from "cors";
+import morgan from "morgan";
 
 const app = express();
 app.use(express.json());
@@ -14,6 +15,17 @@ app.use(
   })
 );
 
+app.use(
+  morgan(":method :url :status :response-time ms", {
+    skip: (req) =>
+      req.path === "/favicon.ico" ||
+      req.path.startsWith("/health") ||
+      req.method === "OPTIONS",
+  })
+);
+
+app.set("trust proxy", 1);
+
 // Connection pool
 const pool = mysql.createPool({
   host: process.env.DB_HOST,
@@ -24,7 +36,17 @@ const pool = mysql.createPool({
   waitForConnections: true,
   connectionLimit: 10,
   namedPlaceholders: true,
+  charset: "utf8mb4",
 });
+
+(async () => {
+  const conn = await pool.getConnection();
+  try {
+    await conn.query("SET NAMES utf8mb4 COLLATE utf8mb4_swedish_ci");
+  } finally {
+    conn.release();
+  }
+})();
 
 // [NYTT] Visa vilket schema som lästs in
 console.log("Using database:", process.env.DB_NAME);
