@@ -251,6 +251,49 @@ app.get("/api/glossary/:term", async (req, res) => {
   }
 });
 
+// POST /api/glossary
+app.post("/api/glossary", async (req, res) => {
+  const term = String(req.body?.term ?? "").trim();
+  const definition =
+    req.body?.definition === undefined ||
+    String(req.body.definition).trim() === ""
+      ? null
+      : String(req.body.definition).trim();
+
+  if (!term || term.length > 255)
+    return res
+      .status(400)
+      .json({ error: "term krävs och får vara max 255 tecken" });
+
+  const conn = await pool.getConnection();
+  try {
+    const [result] = await conn.execute(
+      "INSERT INTO glossary (term, definition) VALUES (?, ?)",
+      [term, definition] // definition kan vara null
+    );
+    // @ts-ignore
+    const id = result?.insertId ?? null;
+
+    // returnera representationen
+    const [rows] = await conn.query(`${BASE_SQL} WHERE g.id = ?`, [id]);
+    const raw = Array.isArray(rows?.[0]?.data)
+      ? rows[0].data
+      : JSON.parse(rows?.[0]?.data || "[]");
+    res
+      .status(201)
+      .set("Location", `/api/glossary/${encodeURIComponent(term)}`)
+      .json(raw[0] ?? { term, definition });
+  } catch (err) {
+    if (err?.code === "ER_DUP_ENTRY") {
+      return res.status(409).json({ error: "term finns redan" });
+    }
+    console.error(err);
+    res.status(500).json({ error: "DB insert failed" });
+  } finally {
+    conn.release();
+  }
+});
+
 // Healthcheck
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
@@ -275,15 +318,6 @@ const port = Number(process.env.PORT || 3000);
   } catch (err) {
     console.error("DB check failed at startup:", err);
   }
-
-  // POST /api/glossary
-  app.post("/api/glossary", (req, res) => {
-    console.log("Mottog POST-data:", req.body);
-    res.status(201).json({
-      message: "POST mottagen!",
-      data: req.body,
-    });
-  });
 
   app.listen(port, () =>
     console.log(`API listening on http://localhost:${port}`)
