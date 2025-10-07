@@ -223,21 +223,74 @@ app.get("/api/glossary", async (req, res) => {
         return res.json({ total, page: pageNum, limit: limitNum, data: [] });
       }
 
-      const orderedSql = `
-      ${BASE_SQL}
-      WHERE g.id IN (${ids.map(() => "?").join(", ")})
-      ORDER BY FIELD(g.id, ${ids.map(() => "?").join(", ")})
-    `;
-      const [rows] = await conn.query(orderedSql, [...ids, ...ids]);
+      // --- NY KOD: bygg ordning inuti JSON_ARRAYAGG och filtrera på IN (...) ---
+      const isLatest = String(req.query.sort).toLowerCase() === "latest";
+
+      const insideOrder = isLatest
+        ? `ORDER BY FIELD(g.id, ${ids.map(() => "?").join(", ")})`
+        : `ORDER BY g.term`;
+
+      const listSql = `
+  SELECT JSON_ARRAYAGG(jrow) AS data
+  FROM (
+    SELECT JSON_OBJECT(
+      'term', g.term,
+      'definition', g.definition,
+      'bulletPoints', g.bulletPoints,
+      'domain', dd.name,
+      'kind', dk.name,
+      'courses', (
+        SELECT JSON_ARRAYAGG(course_obj)
+        FROM (
+          SELECT JSON_OBJECT(
+                   'title', c.title,
+                   'short_form', c.short_form,
+                   'hve_credits', c.hve_credits,
+                   'weblink', w2.path
+                 ) AS course_obj
+          FROM glossary_course gc
+          JOIN course c ON c.id = gc.course_id
+          LEFT JOIN course_weblink cw ON cw.course_id = c.id
+          LEFT JOIN weblink w2 ON w2.id = cw.weblink_id
+          WHERE gc.glossary_id = g.id
+          ORDER BY c.title, w2.path
+        ) AS ordered_courses
+      ),
+      'weblinks', (
+        SELECT JSON_ARRAYAGG(path)
+        FROM (
+          SELECT w.path AS path
+          FROM glossary_weblink gw
+          JOIN weblink w ON w.id = gw.weblink_id
+          WHERE gw.glossary_id = g.id
+          ORDER BY w.path
+        ) AS ordered_glossary_links
+      )
+    ) AS jrow
+    FROM glossary g
+    LEFT JOIN glossary_domain  gd ON gd.glossary_id = g.id
+    LEFT JOIN category_dim_domain dd ON dd.id = gd.domain_id
+    LEFT JOIN glossary_kind   gk ON gk.glossary_id = g.id
+    LEFT JOIN category_dim_kind  dk ON dk.id = gk.id
+    WHERE g.id IN (${ids.map(() => "?").join(", ")})
+    ${insideOrder}
+  ) AS ordered_rows
+`;
+
+      // Viktigt: först värden till IN(...), SEN värden till FIELD(...).
+      const listParams = isLatest ? [...ids, ...ids] : [...ids];
+
+      const [rows] = await conn.query(listSql, listParams);
       const raw = asJsonArray(rows?.[0]?.data);
+
       let data = raw.map(mapGlossaryRow);
-      if (String(req.query.sort).toLowerCase() !== "latest") {
+      if (!isLatest) {
         data = data.sort((a, b) =>
           (a.term || "").localeCompare(b.term || "", "sv")
         );
       }
 
-      res.json({ total, page: pageNum, limit: limitNum, data });
+      return res.json({ total, page: pageNum, limit: limitNum, data });
     } finally {
       conn.release();
     }
