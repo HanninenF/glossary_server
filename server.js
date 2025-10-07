@@ -144,6 +144,12 @@ app.get("/api/glossary", async (req, res) => {
   try {
     const { domain, kind, q, page = "1", limit = "100", sort } = req.query;
 
+    // sort=latest => senast inlagda först, annars alfabetiskt på term
+    const ORDER =
+      String(sort).toLowerCase() === "latest"
+        ? "ORDER BY g.updated_at DESC, g.created_at DESC, g.id DESC"
+        : "ORDER BY g.term";
+
     // Vi filtrerar i en yttre SELECT för att kunna paginera deterministiskt på term
     const filters = [];
     const params = {};
@@ -184,12 +190,6 @@ app.get("/api/glossary", async (req, res) => {
 
     const WHERE = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
 
-    // sort=latest => senast inlagda först, annars alfabetiskt på term
-    const ORDER =
-      String(sort).toLowerCase() === "latest"
-        ? "ORDER BY g.updated_at DESC, g.created_at DESC, g.id DESC"
-        : "ORDER BY g.term";
-
     const idSql = `
       SELECT g.id
       FROM glossary g
@@ -223,16 +223,19 @@ app.get("/api/glossary", async (req, res) => {
         return res.json({ total, page: pageNum, limit: limitNum, data: [] });
       }
 
-      // Kör BASE_SQL men begränsa till dessa id:n
-      const sql = `
-        ${BASE_SQL}
-        WHERE g.id IN (${ids.map(() => "?").join(", ")})
-      `;
-      const [rows] = await conn.query(sql, ids);
+      const orderedSql = `
+      ${BASE_SQL}
+      WHERE g.id IN (${ids.map(() => "?").join(", ")})
+      ORDER BY FIELD(g.id, ${ids.map(() => "?").join(", ")})
+    `;
+      const [rows] = await conn.query(orderedSql, [...ids, ...ids]);
       const raw = asJsonArray(rows?.[0]?.data);
-      const data = raw
-        .map(mapGlossaryRow)
-        .sort((a, b) => (a.term || "").localeCompare(b.term || "", "sv"));
+      let data = raw.map(mapGlossaryRow);
+      if (String(req.query.sort).toLowerCase() !== "latest") {
+        data = data.sort((a, b) =>
+          (a.term || "").localeCompare(b.term || "", "sv")
+        );
+      }
 
       res.json({ total, page: pageNum, limit: limitNum, data });
     } finally {
