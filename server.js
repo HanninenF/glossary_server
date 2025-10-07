@@ -16,7 +16,7 @@ app.use(
 );
 
 app.use(
-  morgan(":method :url :status :response-time ms", {
+  morgan("combined", {
     skip: (req) =>
       req.path === "/favicon.ico" ||
       req.path.startsWith("/health") ||
@@ -142,7 +142,7 @@ const BASE_SQL = `
 // GET /api/glossary?domain=React&kind=Bibliotek&q=handle&page=1&limit=50
 app.get("/api/glossary", async (req, res) => {
   try {
-    const { domain, kind, q, page = "1", limit = "100" } = req.query;
+    const { domain, kind, q, page = "1", limit = "100", sort } = req.query;
 
     // Vi filtrerar i en yttre SELECT för att kunna paginera deterministiskt på term
     const filters = [];
@@ -184,6 +184,12 @@ app.get("/api/glossary", async (req, res) => {
 
     const WHERE = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
 
+    // sort=latest => senast inlagda först, annars alfabetiskt på term
+    const ORDER =
+      String(sort).toLowerCase() === "latest"
+        ? "ORDER BY g.updated_at DESC, g.created_at DESC, g.id DESC"
+        : "ORDER BY g.term";
+
     const idSql = `
       SELECT g.id
       FROM glossary g
@@ -192,7 +198,7 @@ app.get("/api/glossary", async (req, res) => {
       LEFT JOIN glossary_kind   gk ON gk.glossary_id = g.id
       LEFT JOIN category_dim_kind  dk ON dk.id = gk.kind_id
       ${WHERE}
-      ORDER BY g.term
+      ${ORDER}
       LIMIT ${limitNum} OFFSET ${offset}
     `;
 
