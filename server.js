@@ -271,7 +271,7 @@ app.get("/api/glossary", async (req, res) => {
     LEFT JOIN glossary_domain  gd ON gd.glossary_id = g.id
     LEFT JOIN category_dim_domain dd ON dd.id = gd.domain_id
     LEFT JOIN glossary_kind   gk ON gk.glossary_id = g.id
-    LEFT JOIN category_dim_kind  dk ON dk.id = gk.id
+    LEFT JOIN category_dim_kind  dk ON dk.id = gk.kind_id
     WHERE g.id IN (${ids.map(() => "?").join(", ")})
     ${insideOrder}
   ) AS ordered_rows
